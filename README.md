@@ -12,8 +12,8 @@ course's incident API. Read `plan.md` first, then the four ready issues in `issu
 
 ## Implementation and checks
 
-`npm test` exercises initial loading, newest-first updates, polling without overlapping requests,
-an arrival during Ack, acknowledgment state across refreshes, error/empty recovery, safe text rendering,
+`npm test` exercises initial loading, stable polling without overlapping requests, staged arrivals,
+explicit application of the newest-first snapshot, an arrival during Ack, acknowledgment state, error/empty recovery, safe text rendering,
 and the app's Auckland and Berlin time displays. It uses Node's VM modules and requires no dependencies.
 
 `npm run build` copies `app/` into `dist/` and stamps the current full Git SHA into the meta tag and footer.

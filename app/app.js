@@ -4,12 +4,15 @@ const list = document.querySelector('[data-testid="incident-list"]');
 const loader = document.querySelector('[data-testid="loader"]');
 const empty = document.querySelector('[data-testid="empty"]');
 const status = document.querySelector('.status');
+const newBar = document.querySelector('[data-testid="new-bar"]');
 const rows = new Map();
 const timeFormat = new Intl.DateTimeFormat(navigator.language, {
   year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
 let loading = false;
+let loaded = false;
+let latestIncidents = [];
 
 function makeRow(incident) {
   const row = document.createElement('li');
@@ -81,7 +84,14 @@ async function refresh() {
   loading = true;
   try {
     const page = await fetchIncidents();
-    render(page.incidents);
+    latestIncidents = page.incidents;
+    if (!loaded) {
+      render(latestIncidents);
+      loaded = true;
+    }
+    const count = latestIncidents.filter(incident => !rows.has(incident.id)).length;
+    newBar.textContent = `${count} new`;
+    newBar.hidden = count === 0;
     if (status.dataset.error) { status.textContent = ''; delete status.dataset.error; }
   } catch {
     status.textContent = 'Could not refresh incidents. Retrying every 2 seconds.';
@@ -90,6 +100,11 @@ async function refresh() {
     loading = false;
   }
 }
+
+newBar.addEventListener('click', () => {
+  render(latestIncidents);
+  newBar.hidden = true;
+});
 
 void refresh();
 setInterval(refresh, 2000);

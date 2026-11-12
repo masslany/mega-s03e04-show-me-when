@@ -15,6 +15,8 @@ button:focus-visible { outline: 3px solid #276ef1; outline-offset: 2px; }
 button:disabled { cursor: wait; opacity: .6; }
 .acked { color: #186738; font-weight: 600; }
 .status { min-height: 1.4em; }
+.updates { height: 44px; margin-bottom: 12px; }
+.updates button { color: #164b9d; border-color: #164b9d; }
 [hidden] { display: none !important; }
 @media (max-width: 760px) {
   header, main, footer { padding: 12px; }

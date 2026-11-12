@@ -18,10 +18,14 @@ class Element {
   setAttribute(name, value) { this[name] = value; }
   addEventListener(name, handler) { this.events[name] = handler; }
 }
-const list = new Element(), loader = new Element(), empty = new Element(), status = new Element();
-const board = new Element(); board.append(loader); list.hidden = true; empty.hidden = true;
-const selectors = { '[data-testid="incident-list"]': list, '[data-testid="loader"]': loader,
-  '[data-testid="empty"]': empty, '.status': status };
+function surface() {
+  const list = new Element(), loader = new Element(), empty = new Element(), status = new Element(), newBar = new Element();
+  const board = new Element(); board.append(loader); list.hidden = true; empty.hidden = true; newBar.hidden = true;
+  const selectors = { '[data-testid="incident-list"]': list, '[data-testid="loader"]': loader,
+    '[data-testid="empty"]': empty, '.status': status, '[data-testid="new-bar"]': newBar };
+  return { list, loader, empty, status, newBar, board, selectors };
+}
+const { list, loader, empty, status, newBar, board, selectors } = surface();
 let finishFetch, finishAck, timer, fetches = 0, failFetch = false, failAck = false;
 const ackedIds = [];
 const context = vm.createContext({
@@ -56,34 +60,49 @@ const oldRow = list.children[1], button = oldRow.children[4];
 assert.equal(oldRow.children[2].textContent, 'booking · EU · <img src=x onerror=alert(1)>');
 assert.equal(oldRow.children[3].dateTime, older.openedAt);
 const click = button.events.click(); assert.equal(button.disabled, true);
-const refresh = timer(); finishFetch({ incidents: [incident('LATEST', '2026-11-12T04:00:00Z'), newer, older] });
-await refresh; assert.equal(list.children[2], oldRow, 'preserve Ack target during a live arrival');
+const latest = incident('LATEST', '2026-11-12T04:00:00Z');
+const refresh = timer(); finishFetch({ incidents: [latest, newer, older] });
+await refresh;
+assert.deepEqual(list.children.map(r => r.dataset.id), ['NEW', 'OLD'], 'polling must not move visible targets');
+assert.equal(list.children[1], oldRow); assert.equal(newBar.hidden, false); assert.equal(newBar.textContent, '1 new');
 finishAck({}); await click;
 assert.deepEqual(ackedIds, ['OLD']); assert.equal(oldRow.children[4].dataset.testid, 'acked');
-const poll = timer(); finishFetch({ incidents: [newer, older] }); await poll;
+newBar.events.click(); assert.equal(newBar.hidden, true);
+assert.deepEqual(list.children.map(r => r.dataset.id), ['LATEST', 'NEW', 'OLD']);
+assert.equal(list.children[2], oldRow, 'applying pending arrivals preserves the acknowledged row');
+const poll = timer(); finishFetch({ incidents: [latest, newer, older] }); await poll;
 assert.equal(oldRow.children[4].dataset.testid, 'acked', 'Ack mark survives refresh');
-failAck = true; await list.children[0].children[4].events.click();
-assert.equal(list.children[0].children[4].disabled, false); assert.match(status.textContent, /Could not acknowledge NEW/);
-failFetch = true; await timer(); assert.equal(list.children.length, 2); assert.match(status.textContent, /Could not refresh/);
+assert.equal(newBar.hidden, true, 'applied arrivals are not counted twice');
+failAck = true; await list.children[1].children[4].events.click();
+assert.equal(list.children[1].children[4].disabled, false); assert.match(status.textContent, /Could not acknowledge NEW/);
+failFetch = true; await timer(); assert.equal(list.children.length, 3); assert.match(status.textContent, /Could not refresh/);
 failFetch = false; const recovery = timer(); finishFetch({ incidents: [] }); await recovery;
-assert.equal(empty.hidden, false); assert.equal(list.children.length, 0); assert.equal(status.textContent, '');
+assert.equal(list.children.length, 3, 'background responses do not remove visible rows');
+assert.equal(status.textContent, '');
 
 // Run the actual app in both acceptance zones, including locale-specific clocks.
 for (const [zone, locale, expected] of [
   ['Pacific/Auckland', 'en-NZ', '12/11/2026, 04:11:00 pm'],
   ['Europe/Berlin', 'de-DE', '12.11.2026, 04:11:00'],
+  ['UTC', 'en-GB', null],
 ]) {
   process.env.TZ = zone;
+  const localSurface = surface();
   const localContext = vm.createContext({
-    document: { querySelector: s => selectors[s], createElement: () => new Element() },
+    document: { querySelector: s => localSurface.selectors[s], createElement: () => new Element() },
     navigator: { language: locale }, setInterval: () => {},
   });
   const localApi = new vm.SyntheticModule(['fetchIncidents', 'ack'], function () {
-    this.setExport('fetchIncidents', async () => ({ incidents: [newer] }));
+    this.setExport('fetchIncidents', async () => ({ incidents: expected ? [newer] : [] }));
     this.setExport('ack', async () => ({}));
   }, { context: localContext });
   const localApp = new vm.SourceTextModule(await readFile('app/app.js', 'utf8'), { context: localContext });
   await localApp.link(() => localApi); await localApp.evaluate(); await new Promise(setImmediate);
-  assert.equal(list.children[0].children[3].textContent.toLowerCase(), expected);
+  if (expected) assert.equal(localSurface.list.children[0].children[3].textContent.toLowerCase(), expected);
+  else {
+    assert.equal(localSurface.loader.parent, null);
+    assert.equal(localSurface.empty.hidden, false);
+    assert.equal(localSurface.list.children.length, 0);
+  }
 }
-console.log('PASS: loader, newest-first polling, Ack identity/state, empty/error recovery, safe text, Auckland/Berlin local times.');
+console.log('PASS: loader/empty, stable polling, explicit new-bar application, Ack identity/state, error recovery, safe text, Auckland/Berlin local times.');
